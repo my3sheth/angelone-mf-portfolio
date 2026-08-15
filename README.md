@@ -17,4 +17,4 @@ Open-source portfolio management and analytics system built around Angel One Mut
 
 ## Project Status
 
-🚧 Initial development
+🚧 Initial development.

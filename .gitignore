@@ -1,7 +1,10 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 .venv/
@@ -13,7 +16,7 @@ env/
 .env.*
 !.env.example
 
-# Playwright
+# Playwright authentication
 playwright/.auth/
 storage_state.json
 auth.json
@@ -26,15 +29,9 @@ auth.json
 .DS_Store
 Thumbs.db
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
 # Build
 build/
 dist/
-*.egg-info/
 
 # Logs
 *.log
