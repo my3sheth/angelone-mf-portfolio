@@ -21,9 +21,13 @@ playwright/.auth/
 storage_state.json
 auth.json
 
+# Playwright authentication state
+auth_state/
 # IDE
 .vscode/
 .idea/
+# Playwright / Chrome authentication profile
+browser_profile/
 
 # OS
 .DS_Store
