@@ -1,0 +1,5 @@
+Project Configuration
+
+Environment: Development
+Database: PostgreSQL
+Application: Angel One Portfolio
