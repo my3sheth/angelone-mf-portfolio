@@ -1,93 +1,106 @@
+import json
 from pathlib import Path
 
+from dotenv import set_key
 from playwright.sync_api import sync_playwright
-from dotenv import load_dotenv
 
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-PROFILE_DIR = BASE_DIR / "browser_profile"
-ENV_FILE = BASE_DIR / ".env"
+ROOT = Path(__file__).resolve().parents[1]
+ENV_FILE = ROOT / ".env"
+PROFILE_DIR = ROOT / "browser_profile"
 
 LOGIN_URL = "https://www.angelone.in/login/"
-
-TOKEN_NAMES = {
-    "prod_non_trade_access_token": "ANGELONE_NON_TRADE_ACCESS_TOKEN",
-    "prod_trade_access_token": "ANGELONE_TRADE_ACCESS_TOKEN",
-}
+MF_URL = "https://www.angelone.in/mutual-funds/investments/"
+MF_API_HOST = "nbu-mf-portfolio.angelone.in"
 
 
-def save_tokens(cookies: list[dict]) -> None:
-    tokens = {}
-
-    for cookie in cookies:
-        env_name = TOKEN_NAMES.get(cookie["name"])
-
-        if env_name:
-            tokens[env_name] = cookie["value"]
-
-    missing = set(TOKEN_NAMES.values()) - set(tokens)
-
-    if missing:
-        raise RuntimeError(
-            f"Authentication tokens not found: {', '.join(sorted(missing))}"
-        )
-
-    existing = {}
-
-    if ENV_FILE.exists():
-        load_dotenv(ENV_FILE)
-
-        for env_name in TOKEN_NAMES.values():
-            value = __import__("os").getenv(env_name)
-
-            if value:
-                existing[env_name] = value
-
-    existing.update(tokens)
-
-    lines = [
-        f"{name}={value}"
-        for name, value in existing.items()
-    ]
-
-    ENV_FILE.write_text(
-        "\n".join(lines) + "\n",
-        encoding="utf-8",
-    )
-
-    print(f"Saved authentication tokens to {ENV_FILE}")
-
-
-def main() -> None:
-    PROFILE_DIR.mkdir(exist_ok=True)
+def main():
+    captured = None
 
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
-            user_data_dir=str(PROFILE_DIR),
-            channel="chrome",
+            str(PROFILE_DIR),
             headless=False,
+            channel="chrome",
         )
 
         page = context.pages[0] if context.pages else context.new_page()
 
-        page.goto(LOGIN_URL, wait_until="domcontentloaded")
+        page.set_default_timeout(0)
+        page.set_default_navigation_timeout(0)
+        
+        def capture_request(request):
+            nonlocal captured
 
-        print(f"Opening: {page.url}")
-        print(f"Title: {page.title()}")
+            if (
+                MF_API_HOST in request.url
+                and "/v2/portfolios/holdings?" in request.url
+            ):
+                captured = {
+                    "url": request.url,
+                    "headers": dict(request.headers),
+                    "cookies": context.cookies(),
+                }
 
-        input(
-            "\nComplete Angel One login manually. "
-            "After successful login, press Enter here..."
+                print()
+                print("Captured authenticated MF holdings request.")
+                print(request.url)
+
+        page.on("request", capture_request)
+
+        print(f"Opening: {LOGIN_URL}")
+
+        page.goto(
+            LOGIN_URL,
+            wait_until="domcontentloaded",
         )
 
-        cookies = context.cookies()
+        print()
+        print("Complete Angel One login in the browser.")
+        print("Waiting for successful login...")
+        print()
 
-        save_tokens(cookies)
+        page.wait_for_url(
+            "**/trade/home**",
+            timeout=0,
+        )
 
-        print(f"Final URL: {page.url}")
-        print(f"Final title: {page.title()}")
+        print("Login successful.")
+        print("Opening Mutual Fund investments automatically...")
+
+        page.goto(
+            MF_URL,
+            wait_until="domcontentloaded",
+        )
+
+        print("Waiting indefinitely for MF holdings API request...")
+
+        while captured is None:
+            page.wait_for_timeout(1000)
+
+        set_key(
+            str(ENV_FILE),
+            "ANGELONE_MF_HEADERS",
+            json.dumps(captured["headers"]),
+        )
+
+        set_key(
+            str(ENV_FILE),
+            "ANGELONE_MF_COOKIES",
+            json.dumps(captured["cookies"]),
+        )
+
+        set_key(
+            str(ENV_FILE),
+            "ANGELONE_MF_URL",
+            captured["url"],
+        )
 
         context.close()
+
+    print()
+    print(f"Authentication data saved to {ENV_FILE}")
+    print("Browser closed.")
 
 
 if __name__ == "__main__":
