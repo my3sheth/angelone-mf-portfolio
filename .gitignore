@@ -1,45 +1,13 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Environment variables / secrets
 .env
-.env.*
-!.env.example
-
-# Playwright authentication
-playwright/.auth/
-storage_state.json
-auth.json
-
-# Playwright authentication state
-auth_state/
-# IDE
-.vscode/
-.idea/
-# Playwright / Chrome authentication profile
 browser_profile/
 
-# OS
-.DS_Store
-Thumbs.db
+__pycache__/
+*.py[cod]
 
-# Build
-build/
-dist/
+.pytest_cache/
+.venv/
 
-# Logs
+.idea/
+.vscode/
+
 *.log
-
-# Temporary files
-tmp/
-temp/
