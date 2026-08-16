@@ -440,11 +440,26 @@ class AngelOneAuthenticator:
         profile_dir = self._profile_dir_for(profile_label)
 
         with sync_playwright() as p:
-            context = p.chromium.launch_persistent_context(
-                str(profile_dir),
-                headless=headless,
-                channel="chrome",
-            )
+            launch_args = [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ]
+            try:
+                context = p.chromium.launch_persistent_context(
+                    str(profile_dir),
+                    headless=headless,
+                    channel="chrome",
+                    args=launch_args,
+                )
+            except Exception as exc:
+                print(f"        Chrome channel notice: {exc}. Using bundled Chromium...")
+                context = p.chromium.launch_persistent_context(
+                    str(profile_dir),
+                    headless=headless,
+                    args=launch_args,
+                )
 
             page = (
                 context.pages[0]

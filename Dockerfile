@@ -34,8 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright Chromium browser binary
-RUN python -m playwright install chromium
+# Install Playwright Chromium browser binary and system dependencies
+RUN python -m playwright install --with-deps chromium
 
 # Copy application files
 COPY src/ ./src/
