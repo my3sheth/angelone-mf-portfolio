@@ -9,8 +9,10 @@ __pycache__/
 # Playwright browser session
 browser_profile/
 
-# Generated portfolio/cache
+# Generated runtime data
 portfolio.json
+sessions.json
+src/angelone_mf_portfolio.egg-info/
 
 # IDE
 .vscode/

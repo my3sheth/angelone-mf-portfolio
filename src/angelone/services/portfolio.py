@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -11,11 +12,27 @@ from angelone.models.portfolio import (
     MutualFundHolding,
     PortfolioResponse,
 )
+from angelone.session_store import (
+    get_account_session,
+    get_active_account_name,
+    list_account_sessions,
+    set_active_account_name,
+)
 
 
 ROOT = Path(__file__).resolve().parents[3]
 
 CACHE_FILE = ROOT / "portfolio.json"
+
+
+def _cache_file_for(account_name=None):
+    safe_name = (account_name or "default").strip() or "default"
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", safe_name).strip("_")
+    if not safe_name:
+        safe_name = "default"
+    if safe_name == "default":
+        return ROOT / "portfolio.json"
+    return ROOT / f"portfolio_{safe_name}.json"
 
 
 class PortfolioService:
@@ -26,10 +43,38 @@ class PortfolioService:
             AngelOneAPIClient
         ] = None
 
-    def login_and_fetch(self):
+    def list_sessions(self):
+        return list_account_sessions()
+
+    def set_active_session(self, account_name):
+        session = get_account_session(account_name)
+        if not session:
+            raise RuntimeError(f"No session found for account '{account_name}'.")
+
+        from dotenv import set_key
+
+        set_key(".env", "ANGELONE_MF_HEADERS", json.dumps(session.get("headers", {})))
+        set_key(".env", "ANGELONE_MF_COOKIES", json.dumps(session.get("cookies", [])))
+        set_key(".env", "ANGELONE_MF_URL", session.get("url", ""))
+        set_active_account_name(account_name)
+        self.client = AngelOneAPIClient()
+        return self
+
+    def login_existing_session(self, account_name="default"):
+        session = get_account_session(account_name)
+        if not session:
+            raise RuntimeError(f"No saved session found for account '{account_name}'.")
+
+        self.set_active_session(account_name)
+        return self
+
+    def login_and_fetch(self, account_name="default"):
+
+        requested_account = (account_name or "default").strip() or "default"
+        active_account = get_active_account_name() or "default"
 
         # --------------------------------------------------
-        # 1. Try existing authentication
+        # 1. Try existing authentication only for the same active account
         # --------------------------------------------------
 
         print()
@@ -38,29 +83,34 @@ class PortfolioService:
         print("=" * 60)
 
         authenticated = False
+        if requested_account == active_account:
+            try:
+                self.client = AngelOneAPIClient()
 
-        try:
+                print(
+                    "Authentication data found in .env."
+                )
 
-            self.client = AngelOneAPIClient()
+                print(
+                    "Validating stored authentication..."
+                )
 
+                authenticated = getattr(
+                    self.client,
+                    "validate_authentication",
+                    lambda: True,
+                )()
+
+            except Exception as exc:
+
+                print(
+                    f"Stored authentication unavailable: "
+                    f"{exc}"
+                )
+        else:
             print(
-                "Authentication data found in .env."
-            )
-
-            print(
-                "Validating stored authentication..."
-            )
-
-            authenticated = (
-                self.client
-                .validate_authentication()
-            )
-
-        except Exception as exc:
-
-            print(
-                f"Stored authentication unavailable: "
-                f"{exc}"
+                f"Requested account '{requested_account}' differs from active account '{active_account}'. "
+                "Forcing fresh browser login for this account."
             )
 
         # --------------------------------------------------
@@ -87,7 +137,7 @@ class PortfolioService:
                 "Starting Angel One browser login..."
             )
 
-            AngelOneAuthenticator().login()
+            AngelOneAuthenticator().login(account_name=account_name, headless=False)
 
             # Reload newly saved authentication.
             self.client = AngelOneAPIClient()
@@ -260,8 +310,9 @@ class PortfolioService:
         )
 
         result = portfolio.model_dump()
+        target_cache = _cache_file_for(account_name)
 
-        CACHE_FILE.write_text(
+        target_cache.write_text(
             json.dumps(
                 result,
                 indent=2,
@@ -271,17 +322,17 @@ class PortfolioService:
 
         return result
 
-    def get_cached_portfolio(self):
+    def get_cached_portfolio(self, account_name=None):
+        target_cache = _cache_file_for(account_name)
 
-        if not CACHE_FILE.exists():
-
+        if not target_cache.exists():
             raise RuntimeError(
-                "No portfolio has been fetched yet. "
+                "No portfolio has been fetched yet for this account. "
                 "Call POST /auth/login first."
             )
 
         return json.loads(
-            CACHE_FILE.read_text(
+            target_cache.read_text(
                 encoding="utf-8",
             )
         )

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Angel One Portfolio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">portfolio intelligence</p>
+          <h1>Angel One MF Dashboard</h1>
+        </div>
+        <div class="actions">
+          <label class="account-picker" for="accountFilter">
+            <span>Account</span>
+            <select id="accountFilter"></select>
+          </label>
+          <button class="secondary" id="refreshBtn" type="button">Refresh data</button>
+          <button class="primary" id="excelBtn" type="button">Export Excel</button>
+          <button class="ghost" id="pdfBtn" type="button">Export PDF</button>
+        </div>
+      </header>
+
+      <main class="dashboard">
+        <section class="hero panel">
+          <div class="hero-copy">
+            <p class="eyebrow accent">portfolio overview</p>
+            <h2>Build conviction from the numbers that matter.</h2>
+            <p class="subtle">
+              Track invested capital, current value, SIP discipline, and scheme quality in one view.
+            </p>
+          </div>
+          <div class="hero-metric">
+            <span>Total holdings</span>
+            <strong id="holdingsCount">--</strong>
+            <small id="gainValue">--</small>
+          </div>
+        </section>
+
+        <section id="cardGrid" class="card-grid" aria-live="polite"></section>
+
+        <section class="panel">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">holdings table</p>
+              <h3>Scheme details</h3>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead id="tableHead"></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

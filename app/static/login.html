@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login | Angel One Portfolio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <style>
+      body {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+      }
+      .auth-card {
+        width: min(520px, calc(100vw - 32px));
+        background: linear-gradient(180deg, rgba(17, 28, 42, 0.94), rgba(11, 18, 29, 0.96));
+        border: 1px solid rgba(152, 176, 206, 0.18);
+        border-radius: 28px;
+        box-shadow: 0 24px 52px rgba(3, 6, 12, 0.42);
+        padding: 28px;
+      }
+      .auth-header {
+        margin-bottom: 20px;
+      }
+      .auth-form {
+        display: grid;
+        gap: 16px;
+      }
+      label {
+        display: grid;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 0.82rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      input, select {
+        width: 100%;
+        padding: 0.9rem 1rem;
+        border-radius: 12px;
+        border: 1px solid rgba(152, 176, 206, 0.18);
+        background: rgba(7, 13, 20, 0.8);
+        color: var(--text);
+      }
+      .inline-row {
+        display: flex;
+        gap: 10px;
+      }
+      .inline-row > * { flex: 1; }
+      .status {
+        min-height: 20px;
+        color: var(--accent-2);
+        font-size: 0.9rem;
+      }
+      .status.error { color: #ffb4a2; }
+      .status.success { color: var(--success); }
+      .muted-link {
+        color: var(--accent-2);
+        text-decoration: none;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="auth-card">
+      <div class="auth-header">
+        <p class="eyebrow accent">Angel One access</p>
+        <h1>Choose an account</h1>
+      </div>
+
+      <form id="loginForm" class="auth-form">
+        <div>
+          <label for="accountSelect">Saved account</label>
+          <select id="accountSelect" name="accountSelect">
+            <option value="">New Angel One login</option>
+          </select>
+        </div>
+
+        <div class="inline-row">
+          <button class="secondary" id="reuseBtn" type="button">Reuse selected</button>
+          <button class="primary" id="loginBtn" type="submit">Login with Angel One</button>
+        </div>
+
+        <div id="status" class="status" aria-live="polite"></div>
+      </form>
+    </div>
+
+    <script src="/static/login.js"></script>
+  </body>
+</html>

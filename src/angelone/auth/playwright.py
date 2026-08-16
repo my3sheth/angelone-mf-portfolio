@@ -1,8 +1,11 @@
 import json
+import re
 from pathlib import Path
 
 from dotenv import set_key
 from playwright.sync_api import sync_playwright
+
+from angelone.session_store import save_account_session
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -18,7 +21,27 @@ MF_API_HOST = "nbu-mf-portfolio.angelone.in"
 
 class AngelOneAuthenticator:
 
-    def login(self):
+    def _infer_logged_in_name(self, page):
+        try:
+            body_text = page.locator("body").inner_text(timeout=15000)
+            text = " ".join(body_text.split())
+            patterns = [
+                r"(?i)\b(?:hi|hello|welcome)\s*,?\s*([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})",
+                r"(?i)\bmy\s+name\s+is\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})",
+                r"(?i)\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,3})\s*\|\s*.*?",
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, text)
+                if match:
+                    inferred = match.group(1).strip()
+                    if inferred and inferred.lower() not in {"maitri", "maitri sheth", "user", "welcome", "hello"}:
+                        return inferred
+        except Exception:
+            pass
+
+        return None
+
+    def login(self, account_name="default", headless=False):
 
         captured = None
 
@@ -26,7 +49,7 @@ class AngelOneAuthenticator:
 
             context = p.chromium.launch_persistent_context(
                 str(PROFILE_DIR),
-                headless=False,
+                headless=headless,
                 channel="chrome",
             )
 
@@ -134,6 +157,17 @@ class AngelOneAuthenticator:
                 page.wait_for_timeout(1000)
 
             # Save authentication information.
+            session_payload = {
+                "headers": captured["headers"],
+                "cookies": captured["cookies"],
+                "url": captured["url"],
+            }
+
+            inferred_name = self._infer_logged_in_name(page) or account_name
+            if inferred_name in {"Maitri", "Maitri Sheth"}:
+                inferred_name = account_name or "default"
+            save_account_session(inferred_name, session_payload)
+
             set_key(
                 str(ENV_FILE),
                 "ANGELONE_MF_HEADERS",
