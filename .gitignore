@@ -5,17 +5,29 @@
 __pycache__/
 *.py[cod]
 .venv/
+venv/
+*.egg-info/
 
 # Playwright browser session
 browser_profile/
 
-# Generated runtime data
+# Database & Authentication Cache (Sensitive)
+*.sqlite3
+*.sqlite
+*.db
+angelone.sqlite3
+
+# Generated runtime data & snapshots
 portfolio.json
 portfolio_*.json
 sessions.json
 auth_details/
 auth_export_*.json
 src/angelone_mf_portfolio.egg-info/
+
+# Exported Reports
+*.xlsx
+*.pdf
 
 # IDE
 .vscode/
