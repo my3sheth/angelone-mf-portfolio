@@ -1,13 +1,17 @@
+# Environment / secrets
 .env
-browser_profile/
 
+# Python
 __pycache__/
 *.py[cod]
-
-.pytest_cache/
 .venv/
 
-.idea/
-.vscode/
+# Playwright browser session
+browser_profile/
 
-*.log
+# Generated portfolio/cache
+portfolio.json
+
+# IDE
+.vscode/
+.idea/
