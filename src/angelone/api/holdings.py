@@ -1,44 +1,149 @@
-from typing import Any
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
-from angelone.api.client import AngelOneAPIClient
+from .client import AngelOneAPIClient
 
 
 class HoldingsAPI:
-    BASE_URL = "https://nbu-mf-portfolio.angelone.in"
 
-    def __init__(self, client: AngelOneAPIClient) -> None:
-        self.client = client
+    def __init__(self, client=None):
+        self.client = client or AngelOneAPIClient()
 
-    def get_holdings(
-        self,
-        offset: int = 0,
-        limit: int = 100,
-        holding_type: str = "ALL",
-        order_by: str = "current_value",
-    ) -> list[dict[str, Any]]:
-        response = self.client.get(
-            f"{self.BASE_URL}/v2/portfolios/holdings",
-            params={
-                "offset": offset,
-                "limit": limit,
-                "holdingType": holding_type,
-                "orderBy": order_by,
-            },
+    def get_holdings(self):
+        """
+        Fetch all mutual fund holdings using pagination.
+
+        The authenticated URL captured by Playwright contains:
+            offset=0
+            limit=5
+
+        We use the same authenticated endpoint and continue
+        requesting pages until all holdings are retrieved.
+        """
+
+        captured_url = self.client.get_holdings_url()
+
+        parsed = urlparse(captured_url)
+
+        query = parse_qs(
+            parsed.query,
+            keep_blank_values=True,
         )
 
-        payload = response.json()
+        limit = 5
 
-        if payload.get("status") != "success":
-            raise RuntimeError(
-                "Angel One holdings API returned an unsuccessful response"
+        if "limit" in query:
+            try:
+                limit = int(query["limit"][0])
+            except (ValueError, TypeError):
+                limit = 5
+
+        offset = 0
+
+        all_holdings = []
+
+        while True:
+
+            query["offset"] = [str(offset)]
+            query["limit"] = [str(limit)]
+
+            page_url = urlunparse(
+                parsed._replace(
+                    query=urlencode(
+                        query,
+                        doseq=True,
+                    )
+                )
             )
 
-        data = payload.get("data", {})
+            print(
+                f"Fetching holdings page: "
+                f"offset={offset}, limit={limit}"
+            )
 
-        if isinstance(data, list):
-            return data
+            response = self.client.get(
+                page_url
+            )
 
-        if isinstance(data, dict):
-            return data.get("holdings", [])
+            payload = response.json()
 
-        return []
+            page_holdings = (
+                payload.get("data")
+                or []
+            )
+
+            if not page_holdings:
+                break
+
+            all_holdings.extend(
+                page_holdings
+            )
+
+            metadata = (
+                payload.get("metaData")
+                or {}
+            )
+
+            total_count = metadata.get(
+                "holdingCount"
+            )
+
+            # We know the total number of holdings.
+            if (
+                total_count is not None
+                and len(all_holdings) >= total_count
+            ):
+                break
+
+            # If fewer records than the page size
+            # were returned, this is the final page.
+            if len(page_holdings) < limit:
+                break
+
+            offset += limit
+
+        # Remove accidental duplicate schemes.
+        unique_holdings = {}
+
+        for holding in all_holdings:
+
+            key = (
+                holding.get("isin"),
+                holding.get("schemeCode"),
+            )
+
+            if key not in unique_holdings:
+                unique_holdings[key] = holding
+
+        result = list(
+            unique_holdings.values()
+        )
+
+        print(
+            f"Total unique mutual fund holdings: "
+            f"{len(result)}"
+        )
+
+        return result
+
+    def get_holding_detail(
+        self,
+        isin,
+        scheme_code,
+    ):
+
+        url = (
+            "https://nbu-mf-portfolio.angelone.in"
+            f"/v2/portfolios/holdings/"
+            f"{isin}/{scheme_code}"
+        )
+
+        params = {
+            "holdingType": "INTERNAL",
+        }
+
+        response = self.client.get(
+            url,
+            params=params,
+        )
+
+        return response.json()

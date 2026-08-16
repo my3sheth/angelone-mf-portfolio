@@ -1,0 +1,83 @@
+{
+  "holdings_count": 6,
+  "holdings": [
+    {
+      "scheme_name": "HDFC Balanced Advantage Fund",
+      "folio_no": [
+        "29174361/17"
+      ],
+      "sip_date": 7,
+      "start_date": "2025-09-05",
+      "monthly_sip": 1000.0,
+      "total_invested": 56996.5718,
+      "current_units": 104.88,
+      "current_nav": 575.273,
+      "ter": 0.77
+    },
+    {
+      "scheme_name": "Parag Parikh Flexi Cap Fund",
+      "folio_no": [
+        "13713290"
+      ],
+      "sip_date": 7,
+      "start_date": "2025-09-05",
+      "monthly_sip": 2000.0,
+      "total_invested": 45997.8061,
+      "current_units": 532.262,
+      "current_nav": 91.6834,
+      "ter": 0.69
+    },
+    {
+      "scheme_name": "Axis Small Cap Fund",
+      "folio_no": [
+        "910176572216"
+      ],
+      "sip_date": 7,
+      "start_date": "2024-02-05",
+      "monthly_sip": 1000.0,
+      "total_invested": 31998.7233,
+      "current_units": 276.297,
+      "current_nav": 136.61,
+      "ter": 0.77
+    },
+    {
+      "scheme_name": "SBI Contra Fund",
+      "folio_no": [
+        "38456599"
+      ],
+      "sip_date": null,
+      "start_date": null,
+      "monthly_sip": null,
+      "total_invested": 27498.4119,
+      "current_units": 67.116,
+      "current_nav": 419.4247,
+      "ter": 0.84
+    },
+    {
+      "scheme_name": "Motilal Oswal Nifty 500 Momentum 50 Index Fund",
+      "folio_no": [
+        "910128715094"
+      ],
+      "sip_date": 10,
+      "start_date": "2025-08-10",
+      "monthly_sip": 1000.0,
+      "total_invested": 13999.2965,
+      "current_units": 1716.59,
+      "current_nav": 8.4863,
+      "ter": 1.16
+    },
+    {
+      "scheme_name": "UTI Nifty 50 Index Fund",
+      "folio_no": [
+        "588380532036"
+      ],
+      "sip_date": 10,
+      "start_date": "2025-08-10",
+      "monthly_sip": 1000.0,
+      "total_invested": 13999.2053,
+      "current_units": 80.775,
+      "current_nav": 171.5836,
+      "ter": 0.25
+    }
+  ]
+}
