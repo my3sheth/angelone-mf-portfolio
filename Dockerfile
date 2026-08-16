@@ -1,7 +1,9 @@
 FROM python:3.11-slim
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app/src:/app" \
     PORT=8000
 
 WORKDIR /app
@@ -28,10 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt pyproject.toml ./
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -e .
+# Install Python requirements
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright Chromium browser binary
 RUN python -m playwright install chromium
@@ -40,6 +41,10 @@ RUN python -m playwright install chromium
 COPY src/ ./src/
 COPY app/ ./app/
 COPY scripts/ ./scripts/
+COPY pyproject.toml ./
+
+# Install local package in editable mode
+RUN pip install --no-cache-dir -e .
 
 EXPOSE 8000
 
