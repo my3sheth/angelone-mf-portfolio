@@ -1,9 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "angelone-mf-portfolio"
-version = "0.1.0"
+version = "1.0.0"
+description = "Angel One mutual fund portfolio API"
 requires-python = ">=3.11"
+
 dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "playwright",
     "requests",
     "python-dotenv",
-    "playwright",
+    "pydantic",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
