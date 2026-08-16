@@ -17,6 +17,26 @@ function isValidSessionName(name) {
   return true;
 }
 
+function extractErrorMessage(errJson, fallback = 'Operation failed.') {
+  if (!errJson) return fallback;
+  if (typeof errJson === 'string') return errJson;
+  if (typeof errJson.detail === 'string') return errJson.detail;
+  if (Array.isArray(errJson.detail)) {
+    return errJson.detail
+      .map((d) => (typeof d === 'string' ? d : d.msg || d.message || JSON.stringify(d)))
+      .join(', ');
+  }
+  if (typeof errJson.message === 'string') return errJson.message;
+  return fallback;
+}
+
+function isSessionExpired(status, errJson) {
+  if (status === 401) return true;
+  const msg = extractErrorMessage(errJson, '');
+  const lower = msg.toLowerCase();
+  return lower.includes('expired') || lower.includes('no authentication') || lower.includes('invalid credentials');
+}
+
 async function loadSavedAccounts() {
   try {
     const response = await fetch('/auth/sessions');
@@ -34,22 +54,22 @@ async function loadSavedAccounts() {
     accountsList.innerHTML = sessions.map((s) => {
       const name = s.account_name;
       const isValid = s.is_valid;
-      const badgeClass = isValid ? 'active' : 'expired';
-      const badgeText = isValid ? 'Active' : 'Expired';
-      const btnText = isValid ? 'Open Dashboard →' : 'Re-login 🔄';
+      const btnText = isValid ? 'Open Dashboard →' : 'Login';
       const btnClass = isValid ? 'primary btn-sm' : 'secondary btn-sm';
+      const statusBadge = isValid 
+        ? '<span class="badge active">Active</span>' 
+        : '<span class="badge expired">Expired</span>';
 
       return `
         <div class="account-card" data-account="${encodeURIComponent(name)}">
           <div class="account-info">
-            <span class="account-name">👤 ${name}</span>
-            <span class="account-meta">
-              <span class="badge ${badgeClass}">${badgeText}</span>
-              ${s.expires_at ? `Expires: ${new Date(s.expires_at).toLocaleDateString('en-IN')}` : ''}
-            </span>
+            <span class="account-name">${name}</span>
+            <div class="account-meta">
+              ${statusBadge}
+            </div>
           </div>
           <div class="account-actions">
-            <button class="${btnClass}" onclick="handleAccountAction('${encodeURIComponent(name)}', ${isValid})">
+            <button class="${btnClass}" id="btn-${encodeURIComponent(name)}" onclick="handleAccountAction('${encodeURIComponent(name)}', ${isValid})">
               ${btnText}
             </button>
             <button class="btn-del" title="Remove account" onclick="deleteAccount('${encodeURIComponent(name)}')">
@@ -66,22 +86,46 @@ async function loadSavedAccounts() {
 
 window.handleAccountAction = async function(encodedName, isValid) {
   const accountName = decodeURIComponent(encodedName);
+  const actionBtn = document.getElementById(`btn-${encodedName}`);
+
   if (isValid) {
     try {
-      setStatus(`Switching to ${accountName}…`);
-      const selectResp = await fetch('/auth/sessions/select', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `account_name=${encodeURIComponent(accountName)}`,
-      });
-      if (selectResp.ok) {
-        window.location.href = `/?account_name=${encodeURIComponent(accountName)}`;
-        return;
+      setStatus(`Using active session for ${accountName} & fetching latest details…`);
+      if (actionBtn) {
+        actionBtn.disabled = true;
+        actionBtn.textContent = 'Syncing…';
       }
-    } catch {}
+
+      const selectResp = await fetch(`/auth/sessions/select?account_name=${encodeURIComponent(accountName)}&refresh=true`, {
+        method: 'POST',
+      });
+
+      if (selectResp.ok) {
+        setStatus(`Live data refreshed! Opening dashboard…`, 'success');
+        window.location.href = `/dashboard?account_name=${encodeURIComponent(accountName)}`;
+        return;
+      } else {
+        const errJson = await selectResp.json().catch(() => ({}));
+        if (isSessionExpired(selectResp.status, errJson)) {
+          setStatus(`Session expired for ${accountName}. Please log in again.`, 'error');
+          await loadSavedAccounts();
+          return;
+        }
+        const errMsg = extractErrorMessage(errJson, 'Could not fetch portfolio with saved session.');
+        throw new Error(errMsg);
+      }
+    } catch (err) {
+      console.warn('Session live fetch notice:', err);
+      setStatus(err.message || 'Session error. Opening login…', 'error');
+      if (actionBtn) {
+        actionBtn.disabled = false;
+        actionBtn.textContent = 'Open Dashboard →';
+      }
+      return;
+    }
   }
 
-  // If expired or select failed, trigger fresh login
+  // If expired or invalid, trigger fresh browser login
   triggerLogin(accountName);
 };
 
@@ -106,20 +150,20 @@ async function triggerLogin(accountName = null) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      let message = errorText || 'Login failed.';
+      let message = 'Login failed.';
       try {
         const errorJson = JSON.parse(errorText);
-        if (errorJson && errorJson.detail) {
-          message = errorJson.detail;
-        }
-      } catch {}
+        message = extractErrorMessage(errorJson, errorText || message);
+      } catch {
+        message = errorText || message;
+      }
       throw new Error(message);
     }
 
     const data = await response.json();
     const resolvedName = data.account_name || '';
     setStatus(`Loaded: ${resolvedName || 'Angel One account'}`, 'success');
-    window.location.href = resolvedName ? `/?account_name=${encodeURIComponent(resolvedName)}` : '/';
+    window.location.href = resolvedName ? `/dashboard?account_name=${encodeURIComponent(resolvedName)}` : '/dashboard';
   } catch (error) {
     setStatus(error.message, 'error');
   }

@@ -128,68 +128,50 @@ class PortfolioService:
         self.set_active_session(account_name)
         return self
 
-    def login_and_fetch(self, account_name=None):
+    def login_and_fetch(self, account_name=None, force_login=True):
 
         requested_account = account_name.strip() if account_name and account_name.strip() else None
-        profile_tag = requested_account or f"profile_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        profile_tag = requested_account or "default"
         active_account = get_active_account_name() or ""
 
         # --------------------------------------------------
-        # 1. Reuse only the same saved account; never the prior user's session.
+        # 1. Login flow
         # --------------------------------------------------
 
         print()
         print("=" * 60)
-        print(f"Login Flow for: {requested_account}")
+        print(f"Login Flow for: {requested_account or 'new-account'}")
         print("=" * 60)
 
         authenticated = False
-        if requested_account == active_account:
-            try:
-                self.client = AngelOneAPIClient(requested_account)
+        if not force_login and requested_account:
+            valid, _ = is_auth_valid(requested_account)
+            if valid:
+                try:
+                    self.client = AngelOneAPIClient(requested_account)
+                    print("Existing authentication found and valid for this account.")
+                    print("Skipping browser login.")
+                    authenticated = True
+                except Exception as exc:
+                    print(f"Stored authentication unavailable: {exc}")
 
-                print(
-                    "Existing authentication found for this account."
+        if not authenticated:
+            if not force_login:
+                valid, auth_details = (
+                    is_auth_valid(requested_account)
+                    if requested_account
+                    else (False, None)
+                )
+                reason = (
+                    "Session expired"
+                    if not valid
+                    else "Stored credentials unavailable"
+                )
+                raise RuntimeError(
+                    f"{reason} for account '{requested_account or 'account'}'. Please log in again."
                 )
 
-                print(
-                    "Validating stored authentication..."
-                )
-
-                authenticated = True
-
-            except Exception as exc:
-
-                print(
-                    f"Stored authentication unavailable: "
-                    f"{exc}"
-                )
-        else:
-            print(
-                f"New account or account change detected. "
-                "Starting fresh browser login..."
-            )
-
-        # --------------------------------------------------
-        # 2. Login only if required
-        # --------------------------------------------------
-
-        if authenticated:
-
-            print(
-                "Reusing existing authentication."
-            )
-
-            print(
-                "Skipping browser login."
-            )
-
-        else:
-
-            print(
-                "Starting Angel One browser login..."
-            )
-
+            print("Starting Angel One browser login...")
             self.clear_saved_auth()
             resolved_login_name = AngelOneAuthenticator().login(account_name=profile_tag, headless=False)
 
@@ -399,7 +381,7 @@ class PortfolioService:
             encoding="utf-8",
         )
         
-        print(f"✓ Portfolio saved to: {target_cache.name}")
+        print(f"[OK] Portfolio saved to: {target_cache.name}")
         print(f"  Account: {requested_account}")
         print(f"  Holdings: {len(final_holdings)}")
         print(f"  Fetched at: {result.get('fetched_at')}")
@@ -444,6 +426,16 @@ class PortfolioService:
                 encoding="utf-8",
             )
         )
+
+    def refresh_portfolio(self, account_name=None):
+        """
+        Fetch live portfolio details from Angel One APIs using existing non-expired session.
+        Does not open a browser window.
+        """
+        target = account_name or get_active_account_name()
+        if not target:
+            raise RuntimeError("No active account specified to refresh portfolio.")
+        return self.login_and_fetch(account_name=target, force_login=False)
 
     @staticmethod
     def _format_scheme(

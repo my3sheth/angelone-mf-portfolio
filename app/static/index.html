@@ -7,18 +7,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
     <link rel="shortcut icon" href="/static/favicon.svg" />
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=2" />
   </head>
   <body>
     <div class="page-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">portfolio intelligence</p>
           <h1>AngelOne Mutual Funds Holdings</h1>
           <p class="subtle" id="userInfo" style="display: none; margin-top: 4px; font-size: 13px; font-weight: 500;">Loading...</p>
         </div>
         <div class="actions">
           <select id="accountSelect" style="display: none; padding: 10px 14px; border-radius: 12px; font-size: 0.88rem; background: rgba(17, 28, 42, 0.9); border: 1px solid rgba(152, 176, 206, 0.22); color: var(--text); cursor: pointer;"></select>
+          <button class="secondary" id="refreshBtn" type="button" style="padding: 10px 16px; border-radius: 12px; font-size: 0.88rem; font-weight: 600; cursor: pointer;">Refresh</button>
           <a href="/login" class="ghost" id="addAccountBtn" style="text-decoration: none; padding: 10px 14px; border-radius: 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 0.88rem;">+ Add Account</a>
           <button class="primary" id="excelBtn" type="button">Export Excel</button>
           <button class="ghost" id="pdfBtn" type="button">Export PDF</button>
@@ -26,8 +26,8 @@
       </header>
 
       <div id="authBanner" style="display: none; margin-bottom: 20px; padding: 12px 18px; border-radius: 14px; background: rgba(255, 180, 162, 0.12); border: 1px solid rgba(255, 180, 162, 0.3); color: #ffb4a2; justify-content: space-between; align-items: center;">
-        <span>⚠️ Session expired for this account. Showing cached portfolio.</span>
-        <a href="/login" style="color: var(--accent); font-weight: 600; text-decoration: underline; margin-left: 12px;">Re-login to refresh live data</a>
+        <span>⚠️ Session expired for this account. Showing non-updated portfolio.</span>
+        <a href="/login" style="color: var(--accent); font-weight: 600; text-decoration: underline; margin-left: 12px;">Login again to refresh live data</a>
       </div>
 
       <main class="dashboard">
@@ -66,6 +66,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=6"></script>
   </body>
 </html>

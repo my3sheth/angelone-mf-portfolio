@@ -244,25 +244,14 @@ def save_account_session(account_name, session_payload):
     }
 
     with _connect() as conn:
-        existing = conn.execute(
-            "SELECT session_data, created_at, updated_at, last_used_at, expires_at, status FROM sessions WHERE account_name = ?",
-            (name,),
-        ).fetchone()
-        if existing:
-            payload["created_at"] = existing["created_at"]
-            payload["updated_at"] = now
-            payload["last_used_at"] = now
-            payload["expires_at"] = existing["expires_at"] or session_payload.get("expires_at")
-            payload["status"] = existing["status"] or "active"
-        
         row = {
             "account_name": name,
             "session_data": json.dumps(payload, ensure_ascii=False),
-            "created_at": payload["created_at"],
-            "updated_at": payload["updated_at"],
-            "last_used_at": payload["last_used_at"],
-            "expires_at": payload.get("expires_at"),
-            "status": payload.get("status", "active"),
+            "created_at": now,
+            "updated_at": now,
+            "last_used_at": now,
+            "expires_at": session_payload.get("expires_at"),
+            "status": "active",
         }
         conn.execute(
             """

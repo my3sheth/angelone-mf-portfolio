@@ -83,15 +83,11 @@ def save_auth_details(account_name, headers, cookies, url, inferred_name=None, e
     }
 
     with _connect() as conn:
-        existing = conn.execute(
-            "SELECT saved_at, expires_at, status, updated_at FROM auth_details WHERE account_name = ?",
-            (name,),
-        ).fetchone()
-        if existing:
-            payload["saved_at"] = existing["saved_at"]
-            payload["updated_at"] = now
-            payload["expires_at"] = expires_at or existing["expires_at"]
-            payload["status"] = existing["status"] or "active"
+        payload["saved_at"] = now
+        payload["updated_at"] = now
+        payload["validated_at"] = now
+        payload["status"] = "active"
+        payload["expires_at"] = expires_at
 
         conn.execute(
             """

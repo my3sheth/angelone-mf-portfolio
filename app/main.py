@@ -1,17 +1,17 @@
 from io import BytesIO
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from angelone.auth_store import list_all_auth_details, get_auth_status, clear_all_auth_details
-from angelone.session_store import clear_all_sessions
+from angelone.auth_store import list_all_auth_details, get_auth_status, clear_all_auth_details, is_auth_valid, mark_auth_expired
+from angelone.session_store import clear_all_sessions, set_active_account_name, get_active_account_name
 from angelone.services.portfolio import PortfolioService
 
 
@@ -25,8 +25,8 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
 @app.get("/")
-def serve_dashboard():
-    return FileResponse("app/static/index.html")
+def serve_root():
+    return FileResponse("app/static/login.html")
 
 
 @app.get("/login")
@@ -34,9 +34,28 @@ def serve_login():
     return FileResponse("app/static/login.html")
 
 
-def _get_portfolio_payload(account_name=None):
+@app.get("/dashboard")
+def serve_dashboard():
+    return FileResponse("app/static/index.html")
+
+
+def _get_portfolio_payload(account_name=None, force_refresh=False):
     service = PortfolioService()
-    return service.get_cached_portfolio(account_name=account_name)
+    target_account = account_name or get_active_account_name()
+    if force_refresh:
+        if not target_account:
+            raise RuntimeError("Account name is required to refresh live data.")
+        return service.login_and_fetch(account_name=target_account, force_login=False)
+
+    try:
+        return service.get_cached_portfolio(account_name=target_account)
+    except Exception:
+        # If cache is missing, but session is valid, fetch recent live details automatically
+        if target_account:
+            valid, _ = is_auth_valid(target_account)
+            if valid:
+                return service.login_and_fetch(account_name=target_account, force_login=False)
+        raise
 
 
 def _normalize_money(value):
@@ -144,6 +163,7 @@ def _portfolio_table(portfolio):
         {"key": "current_value", "label": "Current Value"},
         {"key": "monthly_sip", "label": "Monthly SIP"},
         {"key": "sip_date", "label": "SIP Date"},
+        {"key": "start_date", "label": "Start Date"},
         {"key": "ter", "label": "TER"},
     ]
 
@@ -164,6 +184,7 @@ def _portfolio_table(portfolio):
             "current_value": round(current_value, 2),
             "monthly_sip": _normalize_money(holding.get("monthly_sip")),
             "sip_date": holding.get("sip_date"),
+            "start_date": holding.get("start_date"),
             "ter": _normalize_money(holding.get("ter")),
         }
         rows.append(row)
@@ -209,7 +230,11 @@ def _pdf_response(portfolio):
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=letter,
+        pagesize=landscape(letter),
+        leftMargin=18,
+        rightMargin=18,
+        topMargin=20,
+        bottomMargin=20,
         title="Portfolio Report",
     )
     styles = getSampleStyleSheet()
@@ -220,19 +245,30 @@ def _pdf_response(portfolio):
 
     data = [[column["label"] for column in table["columns"]]]
     for row in table["rows"]:
-        data.append([
-            row.get(column["key"]) for column in table["columns"]
-        ])
+        row_cells = []
+        for column in table["columns"]:
+            val = row.get(column["key"])
+            if val is None:
+                row_cells.append("—")
+            elif column["key"] in ("total_invested", "current_value", "monthly_sip"):
+                row_cells.append(f"₹{val:,.2f}" if isinstance(val, (int, float)) else str(val))
+            elif column["key"] == "ter":
+                row_cells.append(f"{val}%")
+            else:
+                row_cells.append(str(val))
+        data.append(row_cells)
 
     pdf_table = Table(data, repeatRows=1)
     pdf_table.setStyle(
         TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f5aa6")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 1, colors.grey),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+            ("TOPPADDING", (0, 0), (-1, 0), 6),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
         ])
     )
@@ -358,19 +394,122 @@ def get_saved_sessions():
 
 
 @app.post("/auth/sessions/select")
-def select_saved_session(account_name: str):
+async def select_saved_session(
+    request: Request,
+    account_name: str | None = None,
+    refresh: bool = True,
+):
+    """
+    Select an account and use its non-expired session to fetch the most recent
+    portfolio details from Angel One APIs.
+    """
     try:
+        if not account_name:
+            try:
+                content_type = request.headers.get("content-type", "")
+                if "application/json" in content_type:
+                    body = await request.json()
+                    account_name = body.get("account_name")
+                    if "refresh" in body:
+                        refresh = bool(body.get("refresh"))
+                elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+                    form_data = await request.form()
+                    account_name = form_data.get("account_name")
+                    if "refresh" in form_data:
+                        val = form_data.get("refresh")
+                        refresh = val in (True, "true", "True", "1", 1)
+            except Exception:
+                pass
+
+        target_name = (account_name or get_active_account_name() or "").strip()
+        if not target_name:
+            raise HTTPException(status_code=400, detail="Account name is required.")
+
         service = PortfolioService()
-        service.login_existing_session(account_name)
-        portfolio = service.get_cached_portfolio(account_name)
+        valid, auth_details = is_auth_valid(target_name)
+        if not valid:
+            auth_status = get_auth_status(target_name)
+            raise HTTPException(
+                status_code=401,
+                detail=f"Authentication for '{target_name}' is {auth_status.get('status_code', 'expired')}. Please log in again.",
+            )
+
+        set_active_account_name(target_name)
+
+        if refresh:
+            try:
+                portfolio = service.login_and_fetch(account_name=target_name, force_login=False)
+            except Exception as e:
+                # If network or API error occurs, fallback to cached data if available
+                try:
+                    portfolio = service.get_cached_portfolio(target_name)
+                except Exception:
+                    raise e
+        else:
+            try:
+                portfolio = service.get_cached_portfolio(target_name)
+            except Exception:
+                portfolio = service.login_and_fetch(account_name=target_name, force_login=False)
+
         return {
             "status": "success",
-            "account_name": account_name,
+            "account_name": target_name,
             "data": portfolio,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(
-            status_code=404,
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+@app.post("/portfolio/refresh")
+async def refresh_portfolio(
+    request: Request,
+    account_name: str | None = None,
+):
+    """
+    Refresh live portfolio details for an account using its non-expired session.
+    """
+    try:
+        if not account_name:
+            try:
+                content_type = request.headers.get("content-type", "")
+                if "application/json" in content_type:
+                    body = await request.json()
+                    account_name = body.get("account_name")
+                elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+                    form_data = await request.form()
+                    account_name = form_data.get("account_name")
+            except Exception:
+                pass
+
+        target_account = (account_name or get_active_account_name() or "").strip()
+        if not target_account:
+            raise HTTPException(status_code=400, detail="No active account specified.")
+
+        valid, _ = is_auth_valid(target_account)
+        if not valid:
+            auth_status = get_auth_status(target_account)
+            raise HTTPException(
+                status_code=401,
+                detail=f"Authentication for '{target_account}' is {auth_status.get('status_code', 'expired')}. Please log in again.",
+            )
+
+        service = PortfolioService()
+        portfolio = service.login_and_fetch(account_name=target_account, force_login=False)
+        return {
+            "status": "success",
+            "account_name": target_account,
+            "data": portfolio,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
             detail=str(exc),
         )
 
@@ -398,12 +537,12 @@ def delete_session(account_name: str):
 
 
 @app.get("/portfolio")
-def get_portfolio(account_name: str | None = None):
+def get_portfolio(account_name: str | None = None, refresh: bool = False):
     try:
         return {
             "status": "success",
             "account_name": account_name,
-            "data": _get_portfolio_payload(account_name),
+            "data": _get_portfolio_payload(account_name, force_refresh=refresh),
         }
 
     except Exception as exc:
@@ -414,9 +553,9 @@ def get_portfolio(account_name: str | None = None):
 
 
 @app.get("/portfolio/dashboard")
-def get_portfolio_dashboard(account_name: str | None = None):
+def get_portfolio_dashboard(account_name: str | None = None, refresh: bool = False):
     try:
-        portfolio = _get_portfolio_payload(account_name)
+        portfolio = _get_portfolio_payload(account_name, force_refresh=refresh)
         summary_data = _portfolio_summary(portfolio)
         return {
             "status": "success",
@@ -433,9 +572,9 @@ def get_portfolio_dashboard(account_name: str | None = None):
 
 
 @app.get("/portfolio/table")
-def get_portfolio_table(account_name: str | None = None):
+def get_portfolio_table(account_name: str | None = None, refresh: bool = False):
     try:
-        portfolio = _get_portfolio_payload(account_name)
+        portfolio = _get_portfolio_payload(account_name, force_refresh=refresh)
         table_data = _portfolio_table(portfolio)
         return {
             "status": "success",

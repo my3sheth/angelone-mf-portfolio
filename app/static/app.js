@@ -124,13 +124,26 @@ function renderSummary() {
   gainValue.textContent = `${gainText} total gain`;
 }
 
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return '—';
+  const str = String(dateStr).trim();
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const [_, year, month, day] = match;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthName = months[parseInt(month, 10) - 1] || month;
+    return `${day} ${monthName} ${year}`;
+  }
+  return dateStr;
+}
+
 function renderTable() {
   const thead = document.getElementById('tableHead');
   const tbody = document.getElementById('tableBody');
 
   if (!state.table?.columns?.length || !state.table?.rows?.length) {
     thead.innerHTML = '';
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No holdings found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No holdings found.</td></tr>';
     return;
   }
 
@@ -162,6 +175,10 @@ function renderTable() {
 
           if (column.key === 'sip_date') {
             displayValue = value === null || value === undefined ? '—' : value;
+          }
+
+          if (column.key === 'start_date') {
+            displayValue = formatDisplayDate(value);
           }
 
           return `<td>${displayValue}</td>`;
@@ -201,8 +218,7 @@ async function loadAccounts() {
       accountSelect.innerHTML = sessions.map((s) => {
         const name = s.account_name;
         const selected = name === state.accountName ? 'selected' : '';
-        const statusLabel = s.is_valid ? '' : ' (Expired)';
-        return `<option value="${name}" ${selected}>👤 ${name}${statusLabel}</option>`;
+        return `<option value="${name}" ${selected}>${name}</option>`;
       }).join('');
       accountSelect.value = state.accountName;
     } else {
@@ -256,8 +272,21 @@ async function fetchData() {
   } catch (error) {
     console.error('Error fetching data:', error);
     document.getElementById('cardGrid').innerHTML = `<div class="empty-state">No portfolio data cached yet. <a href="/login" style="color:var(--accent-2);margin-left:8px;text-decoration:underline;">Click here to log in</a></div>`;
-    document.getElementById('tableBody').innerHTML = '<tr><td colspan="9" class="empty-state">No portfolio found. <a href="/login" style="color:var(--accent-2);margin-left:8px;text-decoration:underline;">Please log in</a> to fetch holdings.</td></tr>';
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="10" class="empty-state">No portfolio found. <a href="/login" style="color:var(--accent-2);margin-left:8px;text-decoration:underline;">Please log in</a> to fetch holdings.</td></tr>';
   }
+}
+
+function extractErrorMessage(errJson, fallback = 'Operation failed.') {
+  if (!errJson) return fallback;
+  if (typeof errJson === 'string') return errJson;
+  if (typeof errJson.detail === 'string') return errJson.detail;
+  if (Array.isArray(errJson.detail)) {
+    return errJson.detail
+      .map((d) => (typeof d === 'string' ? d : d.msg || d.message || JSON.stringify(d)))
+      .join(', ');
+  }
+  if (typeof errJson.message === 'string') return errJson.message;
+  return fallback;
 }
 
 function bindActions() {
@@ -267,7 +296,38 @@ function bindActions() {
       state.accountName = e.target.value;
       const newUrl = `${window.location.pathname}?account_name=${encodeURIComponent(state.accountName)}`;
       window.history.replaceState(null, '', newUrl);
+      try {
+        await fetch(`/auth/sessions/select?account_name=${encodeURIComponent(state.accountName)}&refresh=false`, {
+          method: 'POST',
+        });
+      } catch {}
       await fetchData();
+    });
+  }
+
+  const refreshBtn = document.getElementById('refreshBtn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      if (!state.accountName) return;
+      const origText = refreshBtn.textContent;
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = 'Syncing...';
+      try {
+        const resp = await fetch(`/portfolio/refresh?account_name=${encodeURIComponent(state.accountName)}`, {
+          method: 'POST',
+        });
+        if (!resp.ok) {
+          const errJson = await resp.json().catch(() => ({}));
+          throw new Error(extractErrorMessage(errJson, 'Could not refresh portfolio.'));
+        }
+        await fetchData();
+      } catch (err) {
+        alert(`Refresh error: ${err.message}`);
+        await checkAndDisplayAuthBanner();
+      } finally {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = origText || 'Refresh';
+      }
     });
   }
 

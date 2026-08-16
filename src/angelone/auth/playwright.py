@@ -434,7 +434,7 @@ class AngelOneAuthenticator:
 
         return None
 
-    def login(self, account_name="default", headless=False):
+    def login(self, account_name="default", headless=False, clear_session=True):
         captured = None
         profile_label = (account_name or "").strip() or f"profile_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
         profile_dir = self._profile_dir_for(profile_label)
@@ -445,6 +445,12 @@ class AngelOneAuthenticator:
                 headless=headless,
                 channel="chrome",
             )
+
+            if clear_session:
+                try:
+                    context.clear_cookies()
+                except Exception:
+                    pass
 
             page = (
                 context.pages[0]
@@ -484,29 +490,60 @@ class AngelOneAuthenticator:
 
             # Wait until Angel One redirects to the authenticated area.
             while True:
-                if "/trade/home" in page.url:
+                curr_url = page.url.lower()
+                cookies = context.cookies()
+                has_auth_cookie = any(
+                    c.get("name") in {"ABUserCookie", "prod_non_trade_access_token", "prod_trade_access_token"}
+                    for c in cookies
+                )
+
+                if (
+                    "/trade" in curr_url
+                    or "/mutual-funds" in curr_url
+                    or "/dashboard" in curr_url
+                    or has_auth_cookie
+                ) and "/login" not in curr_url:
                     break
-                if "/trade/tradeone/chart" in page.url:
-                    break
+
                 page.wait_for_timeout(1000)
 
             print()
             print("Login successful.")
             print("Opening Mutual Fund investments automatically...")
+            page.wait_for_timeout(2000)
 
             try:
                 page.goto(
                     MF_URL,
                     wait_until="domcontentloaded",
-                    timeout=0,
+                    timeout=45000,
                 )
             except Exception as exc:
                 print(f"MF navigation notice: {exc}")
 
             print()
-            print("Waiting indefinitely for MF holdings API request...")
+            print("Waiting for MF holdings API request...")
 
+            nav_retries = 0
             while captured is None:
+                curr_url = page.url.lower()
+                # If still on /trade or not yet on mutual-funds, navigate directly
+                if captured is None and "/mutual-funds" not in curr_url and nav_retries < 5:
+                    page.wait_for_timeout(2000)
+                    try:
+                        print(f"Navigating to Mutual Funds investments... (attempt {nav_retries + 1})")
+                        mf_link = page.locator("a[href*='mutual-funds']").first
+                        if mf_link.is_visible(timeout=1000):
+                            mf_link.click(timeout=3000)
+                        else:
+                            page.goto(MF_URL, wait_until="domcontentloaded", timeout=30000)
+                    except Exception:
+                        try:
+                            page.goto(MF_URL, wait_until="domcontentloaded", timeout=30000)
+                        except Exception:
+                            pass
+                    nav_retries += 1
+
                 page.wait_for_timeout(1000)
 
             expires_at = _extract_expiration(captured["cookies"], captured["headers"])

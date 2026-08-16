@@ -113,7 +113,7 @@ def cmd_delete(account_name):
     confirm = input(f"Delete auth details for '{account_name}'? (yes/no): ").strip().lower()
     if confirm == "yes":
         delete_auth_details(account_name)
-        print(f"✓ Deleted auth details for '{account_name}'")
+        print(f"[OK] Deleted auth details for '{account_name}'")
     else:
         print("Cancelled.")
 
@@ -136,7 +136,7 @@ def cmd_export():
     }
     
     export_file.write_text(json.dumps(export_data, indent=2), encoding="utf-8")
-    print(f"✓ Exported auth details to: {export_file}")
+    print(f"[OK] Exported auth details to: {export_file}")
 
 
 def main():
