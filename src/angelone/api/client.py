@@ -1,36 +1,36 @@
 import json
-import os
 
 import requests
-from dotenv import load_dotenv
+
+from angelone.auth_store import load_auth_details, mark_auth_expired
+from angelone.session_store import get_active_account_name
 
 
 class AngelOneAPIClient:
 
-    def __init__(self):
-        # Always reload the latest values written to .env
-        load_dotenv(override=True)
-
-        self.session = requests.Session()
-
-        raw_headers = os.getenv("ANGELONE_MF_HEADERS")
-        raw_cookies = os.getenv("ANGELONE_MF_COOKIES")
-
-        if not raw_headers or not raw_cookies:
+    def __init__(self, account_name=None):
+        self.account_name = account_name or get_active_account_name()
+        if not self.account_name:
             raise RuntimeError(
-                "Angel One authentication data is missing. "
+                "No active account selected. Please log in or pick an account first."
+            )
+
+        auth_details = load_auth_details(self.account_name)
+        if not auth_details:
+            raise RuntimeError(
+                f"Angel One authentication data is missing for account '{self.account_name}'. "
                 "Run authentication first."
             )
 
-        try:
-            headers = json.loads(raw_headers)
-            cookies = json.loads(raw_cookies)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                "Stored Angel One authentication data is invalid."
-            ) from exc
+        self.session = requests.Session()
+        headers = auth_details.get("headers") or {}
+        cookies = auth_details.get("cookies") or []
 
-        # Headers that must NOT be replayed manually.
+        if not isinstance(headers, dict) or not isinstance(cookies, list):
+            raise RuntimeError(
+                f"Stored Angel One authentication data for '{self.account_name}' is invalid."
+            )
+
         excluded_headers = {
             "host",
             "content-length",
@@ -44,8 +44,8 @@ class AngelOneAPIClient:
 
         for cookie in cookies:
             self.session.cookies.set(
-                cookie["name"],
-                cookie["value"],
+                cookie.get("name"),
+                cookie.get("value"),
                 domain=cookie.get("domain"),
                 path=cookie.get("path", "/"),
             )
@@ -55,27 +55,30 @@ class AngelOneAPIClient:
         Return the authenticated MF holdings endpoint
         captured during browser login.
         """
-
-        load_dotenv(override=True)
-
-        url = os.getenv("ANGELONE_MF_URL")
+        auth_details = load_auth_details(self.account_name or get_active_account_name())
+        url = (auth_details or {}).get("url")
 
         if not url:
             raise RuntimeError(
-                "ANGELONE_MF_URL is missing from .env. "
+                f"Authentication URL is missing for account '{self.account_name}'. "
                 "Run authentication first."
             )
 
         return url
 
     def get(self, url, params=None):
-
-        response = self.session.get(
-            url,
-            params=params,
-            timeout=30,
-        )
-
-        response.raise_for_status()
-
-        return response
+        try:
+            response = self.session.get(
+                url,
+                params=params,
+                timeout=30,
+            )
+            response.raise_for_status()
+            return response
+        except requests.HTTPError as err:
+            if err.response is not None and err.response.status_code in (401, 403):
+                try:
+                    mark_auth_expired(self.account_name)
+                except Exception:
+                    pass
+            raise

@@ -11,7 +11,10 @@ browser_profile/
 
 # Generated runtime data
 portfolio.json
+portfolio_*.json
 sessions.json
+auth_details/
+auth_export_*.json
 src/angelone_mf_portfolio.egg-info/
 
 # IDE

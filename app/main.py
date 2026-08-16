@@ -1,4 +1,5 @@
 from io import BytesIO
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -9,6 +10,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from angelone.auth_store import list_all_auth_details, get_auth_status, clear_all_auth_details
+from angelone.session_store import clear_all_sessions
 from angelone.services.portfolio import PortfolioService
 
 
@@ -253,16 +256,65 @@ def health():
     }
 
 
+@app.get("/auth/tracking")
+def get_auth_tracking():
+    """View all tracked authentication details across all accounts."""
+    try:
+        auth_list = list_all_auth_details()
+        return {
+            "status": "success",
+            "total_accounts": len(auth_list),
+            "accounts": auth_list,
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+@app.get("/auth/status/{account_name}")
+def check_auth_status(account_name: str):
+    """Check if authentication for an account is valid and not expired."""
+    try:
+        auth_status = get_auth_status(account_name)
+        return {
+            "status": "success",
+            "account_name": account_name,
+            "auth": auth_status,
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
 @app.post("/auth/login")
-def login_and_fetch_portfolio(account_name: str = "default"):
+def login_and_fetch_portfolio(account_name: str | None = None):
     try:
         service = PortfolioService()
         portfolio = service.login_and_fetch(account_name=account_name)
+        active_account = portfolio.get("account_name")
+        if not active_account:
+            sessions = service.list_sessions()
+            active_account = next(
+                (
+                    s["account_name"]
+                    for s in sessions
+                    if s.get("account_name")
+                ),
+                (account_name or "active-account"),
+            )
+
+        if active_account:
+            from angelone.session_store import set_active_account_name
+            set_active_account_name(active_account)
 
         return {
             "status": "success",
             "data": portfolio,
-            "account_name": account_name,
+            "account_name": active_account,
         }
 
     except Exception as exc:
@@ -272,17 +324,31 @@ def login_and_fetch_portfolio(account_name: str = "default"):
 
         raise HTTPException(
             status_code=500,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=str(exc),
         )
 
 
 @app.get("/auth/sessions")
 def get_saved_sessions():
     try:
+        from angelone.session_store import get_active_account_name
         service = PortfolioService()
+        sessions = service.list_sessions()
+        # Enrich sessions with real-time auth status
+        enriched = []
+        for s in sessions:
+            name = s.get("account_name")
+            status_info = get_auth_status(name)
+            enriched.append({
+                **s,
+                "auth_status": status_info.get("status_code", "unknown"),
+                "is_valid": status_info.get("valid", False),
+                "expires_at": status_info.get("expires_at"),
+            })
         return {
             "status": "success",
-            "sessions": service.list_sessions(),
+            "active_account": get_active_account_name(),
+            "sessions": enriched,
         }
     except Exception as exc:
         raise HTTPException(
@@ -309,6 +375,28 @@ def select_saved_session(account_name: str):
         )
 
 
+@app.delete("/auth/sessions/{account_name}")
+def delete_session(account_name: str):
+    try:
+        from angelone.session_store import remove_account_session
+        from angelone.auth_store import delete_auth_details
+        from angelone.services.portfolio import _cache_file_for
+        remove_account_session(account_name)
+        delete_auth_details(account_name)
+        try:
+            cache_file = _cache_file_for(account_name)
+            if cache_file.exists():
+                cache_file.unlink()
+        except Exception:
+            pass
+        return {"status": "success", "message": f"Account '{account_name}' deleted."}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
 @app.get("/portfolio")
 def get_portfolio(account_name: str | None = None):
     try:
@@ -329,10 +417,12 @@ def get_portfolio(account_name: str | None = None):
 def get_portfolio_dashboard(account_name: str | None = None):
     try:
         portfolio = _get_portfolio_payload(account_name)
+        summary_data = _portfolio_summary(portfolio)
         return {
             "status": "success",
-            "account_name": account_name,
-            **_portfolio_summary(portfolio),
+            "account_name": portfolio.get("account_name", account_name),
+            "fetched_at": portfolio.get("fetched_at"),
+            **summary_data,
         }
 
     except Exception as exc:
@@ -346,10 +436,12 @@ def get_portfolio_dashboard(account_name: str | None = None):
 def get_portfolio_table(account_name: str | None = None):
     try:
         portfolio = _get_portfolio_payload(account_name)
+        table_data = _portfolio_table(portfolio)
         return {
             "status": "success",
-            "account_name": account_name,
-            **_portfolio_table(portfolio),
+            "account_name": portfolio.get("account_name", account_name),
+            "fetched_at": portfolio.get("fetched_at"),
+            **table_data,
         }
 
     except Exception as exc:
@@ -383,3 +475,11 @@ def export_portfolio_pdf(account_name: str | None = None):
             status_code=500,
             detail=str(exc),
         )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    favicon_path = Path(__file__).resolve().parent / "static" / "favicon.svg"
+    if favicon_path.exists():
+        return FileResponse(favicon_path, media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="Favicon not found")

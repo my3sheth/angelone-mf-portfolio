@@ -5,15 +5,83 @@ const currencyFormatter = new Intl.NumberFormat('en-IN', {
 });
 
 const numberFormatter = new Intl.NumberFormat('en-IN', {
-  maximumFractionDigits: 2,
+  maximumFractionDigits: 4,
 });
+
+async function checkAuthStatus(accountName) {
+  try {
+    const response = await fetch(`/auth/status/${encodeURIComponent(accountName)}`);
+    if (!response.ok) {
+      throw new Error('Unable to check auth status.');
+    }
+
+    const payload = await response.json();
+    return payload.auth || {};
+  } catch (error) {
+    console.error('Auth status check failed:', error);
+    return { valid: false, status_code: 'unknown', message: 'Auth check failed' };
+  }
+}
+
+async function validateAndSwitchAccount(accountName) {
+  // Check if auth is valid for this account
+  const authStatus = await checkAuthStatus(accountName);
+  
+  if (!authStatus.valid) {
+    // Auth is expired or invalid, redirect to login
+    console.warn(`Auth for '${accountName}' is ${authStatus.status_code}. Redirecting to login...`);
+    alert(`Authentication for '${accountName}' is ${authStatus.status_code}.\n\nPlease log in again.`);
+    window.location.href = '/login';
+    return false;
+  }
+  
+  return true;
+}
+
 
 const state = {
   dashboard: null,
   table: null,
   accountName: '',
-  accounts: [],
 };
+
+function formatUserTime(dateStr) {
+  if (!dateStr) return '';
+  let str = String(dateStr).trim();
+  // If no timezone offset is provided, treat as UTC
+  if (!str.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(str)) {
+    str += 'Z';
+  }
+  const date = new Date(str);
+  if (isNaN(date.getTime())) return dateStr;
+
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function updateUserInfo() {
+  const userInfo = document.getElementById('userInfo');
+  if (!state.accountName) {
+    userInfo.style.display = 'none';
+    return;
+  }
+
+  const fetchedAt = state.dashboard?.fetched_at;
+  if (fetchedAt) {
+    const formattedDate = formatUserTime(fetchedAt);
+    userInfo.textContent = `📊 ${state.accountName} • Updated ${formattedDate}`;
+    userInfo.style.display = 'block';
+  } else {
+    userInfo.textContent = `📊 ${state.accountName}`;
+    userInfo.style.display = 'block';
+  }
+}
 
 function formatCurrency(value) {
   const numericValue = Number(value ?? 0);
@@ -105,36 +173,65 @@ function renderTable() {
 
 async function loadAccounts() {
   try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramAccount = (urlParams.get('account_name') || '').trim();
+
     const response = await fetch('/auth/sessions');
     if (!response.ok) {
-      throw new Error('Could not load saved accounts.');
+      throw new Error('Could not load saved sessions.');
     }
 
     const payload = await response.json();
-    const sessions = payload.sessions || [];
-    const select = document.getElementById('accountFilter');
-    state.accounts = sessions.map((session) => session.account_name || 'default');
+    const sessions = (payload.sessions || []).filter((session) => {
+      const name = (session.account_name || '').trim();
+      return name && !/^account_[0-9]+/i.test(name) && !/^[0-9a-f]{8,}$/i.test(name) && !name.includes(':');
+    });
 
-    select.innerHTML = `
-      <option value="__change_account__">Change account / add account</option>
-      ${state.accounts.map((account) => `
-        <option value="${account}">${account}</option>
-      `).join('')}
-    `;
-
-    if (!state.accountName && state.accounts.length) {
-      state.accountName = state.accounts[0];
+    if (paramAccount && sessions.some((s) => s.account_name === paramAccount)) {
+      state.accountName = paramAccount;
+    } else if (payload.active_account && sessions.some((s) => s.account_name === payload.active_account)) {
+      state.accountName = payload.active_account;
+    } else if (!state.accountName && sessions.length) {
+      state.accountName = sessions[0].account_name;
     }
 
-    select.value = state.accountName || '__change_account__';
+    const accountSelect = document.getElementById('accountSelect');
+    if (sessions.length > 1) {
+      accountSelect.style.display = 'inline-block';
+      accountSelect.innerHTML = sessions.map((s) => {
+        const name = s.account_name;
+        const selected = name === state.accountName ? 'selected' : '';
+        const statusLabel = s.is_valid ? '' : ' (Expired)';
+        return `<option value="${name}" ${selected}>👤 ${name}${statusLabel}</option>`;
+      }).join('');
+      accountSelect.value = state.accountName;
+    } else {
+      accountSelect.style.display = 'none';
+    }
   } catch (error) {
     console.error(error);
   }
 }
 
+async function checkAndDisplayAuthBanner() {
+  const authBanner = document.getElementById('authBanner');
+  if (!state.accountName) {
+    authBanner.style.display = 'none';
+    return;
+  }
+
+  const authStatus = await checkAuthStatus(state.accountName);
+  if (!authStatus.valid) {
+    authBanner.style.display = 'flex';
+  } else {
+    authBanner.style.display = 'none';
+  }
+}
+
 async function fetchData() {
   const accountName = state.accountName || '';
-  if (!accountName || accountName === '__change_account__') {
+  if (!accountName) {
+    window.location.href = '/login';
     return;
   }
 
@@ -151,36 +248,44 @@ async function fetchData() {
 
     state.dashboard = await dashboardResponse.json();
     state.table = await tableResponse.json();
+    updateUserInfo();
     renderCardGrid();
     renderSummary();
     renderTable();
+    checkAndDisplayAuthBanner();
   } catch (error) {
-    document.getElementById('cardGrid').innerHTML = `<div class="empty-state">${error.message}</div>`;
-    document.getElementById('tableBody').innerHTML = '<tr><td colspan="9" class="empty-state">Unable to load holdings.</td></tr>';
+    console.error('Error fetching data:', error);
+    document.getElementById('cardGrid').innerHTML = `<div class="empty-state">No portfolio data cached yet. <a href="/login" style="color:var(--accent-2);margin-left:8px;text-decoration:underline;">Click here to log in</a></div>`;
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="9" class="empty-state">No portfolio found. <a href="/login" style="color:var(--accent-2);margin-left:8px;text-decoration:underline;">Please log in</a> to fetch holdings.</td></tr>';
   }
 }
 
 function bindActions() {
-  document.getElementById('refreshBtn').addEventListener('click', fetchData);
-  document.getElementById('excelBtn').addEventListener('click', () => {
-    const accountName = state.accountName && state.accountName !== '__change_account__' ? `?account_name=${encodeURIComponent(state.accountName)}` : '';
-    window.open(`/portfolio/export/excel${accountName}`, '_blank');
-  });
-  document.getElementById('pdfBtn').addEventListener('click', () => {
-    const accountName = state.accountName && state.accountName !== '__change_account__' ? `?account_name=${encodeURIComponent(state.accountName)}` : '';
-    window.open(`/portfolio/export/pdf${accountName}`, '_blank');
-  });
+  const accountSelect = document.getElementById('accountSelect');
+  if (accountSelect) {
+    accountSelect.addEventListener('change', async (e) => {
+      state.accountName = e.target.value;
+      const newUrl = `${window.location.pathname}?account_name=${encodeURIComponent(state.accountName)}`;
+      window.history.replaceState(null, '', newUrl);
+      await fetchData();
+    });
+  }
 
-  document.getElementById('accountFilter').addEventListener('change', (event) => {
-    const nextValue = event.target.value;
-    if (nextValue === '__change_account__') {
-      window.location.href = '/login';
-      return;
-    }
+  const excelBtn = document.getElementById('excelBtn');
+  if (excelBtn) {
+    excelBtn.addEventListener('click', () => {
+      const accountName = state.accountName ? `?account_name=${encodeURIComponent(state.accountName)}` : '';
+      window.open(`/portfolio/export/excel${accountName}`, '_blank');
+    });
+  }
 
-    state.accountName = nextValue;
-    fetchData();
-  });
+  const pdfBtn = document.getElementById('pdfBtn');
+  if (pdfBtn) {
+    pdfBtn.addEventListener('click', () => {
+      const accountName = state.accountName ? `?account_name=${encodeURIComponent(state.accountName)}` : '';
+      window.open(`/portfolio/export/pdf${accountName}`, '_blank');
+    });
+  }
 }
 
 async function init() {

@@ -7,83 +7,166 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="shortcut icon" href="/static/favicon.svg" />
     <link rel="stylesheet" href="/static/styles.css" />
     <style>
       body {
         display: grid;
         place-items: center;
         min-height: 100vh;
+        padding: 24px 16px;
       }
       .auth-card {
-        width: min(520px, calc(100vw - 32px));
+        width: min(540px, 100%);
         background: linear-gradient(180deg, rgba(17, 28, 42, 0.94), rgba(11, 18, 29, 0.96));
         border: 1px solid rgba(152, 176, 206, 0.18);
         border-radius: 28px;
         box-shadow: 0 24px 52px rgba(3, 6, 12, 0.42);
-        padding: 28px;
+        padding: 32px;
       }
       .auth-header {
-        margin-bottom: 20px;
+        margin-bottom: 24px;
       }
       .auth-form {
         display: grid;
         gap: 16px;
       }
-      label {
-        display: grid;
-        gap: 8px;
-        color: var(--muted);
-        font-size: 0.82rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+      .sessions-section {
+        margin-bottom: 24px;
+        display: none;
       }
-      input, select {
-        width: 100%;
-        padding: 0.9rem 1rem;
-        border-radius: 12px;
-        border: 1px solid rgba(152, 176, 206, 0.18);
-        background: rgba(7, 13, 20, 0.8);
+      .section-title {
+        font-size: 0.82rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 12px;
+      }
+      .accounts-list {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .account-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 18px;
+        border-radius: 16px;
+        background: rgba(10, 18, 28, 0.7);
+        border: 1px solid rgba(152, 176, 206, 0.14);
+        transition: all 0.2s ease;
+      }
+      .account-card:hover {
+        border-color: rgba(240, 173, 92, 0.35);
+        background: rgba(15, 26, 40, 0.85);
+      }
+      .account-info {
+        display: grid;
+        gap: 3px;
+      }
+      .account-name {
+        font-weight: 600;
+        font-size: 0.95rem;
         color: var(--text);
       }
-      .inline-row {
+      .account-meta {
+        font-size: 0.78rem;
+        color: var(--muted);
         display: flex;
-        gap: 10px;
+        align-items: center;
+        gap: 8px;
       }
-      .inline-row > * { flex: 1; }
+      .badge {
+        font-size: 0.7rem;
+        padding: 2px 8px;
+        border-radius: 8px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .badge.active {
+        background: rgba(143, 227, 168, 0.15);
+        color: var(--success);
+        border: 1px solid rgba(143, 227, 168, 0.3);
+      }
+      .badge.expired {
+        background: rgba(255, 180, 162, 0.15);
+        color: #ffb4a2;
+        border: 1px solid rgba(255, 180, 162, 0.3);
+      }
+      .account-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn-sm {
+        padding: 7px 14px;
+        font-size: 0.82rem;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .btn-del {
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        padding: 6px;
+        font-size: 1rem;
+        border-radius: 8px;
+        transition: color 0.2s;
+      }
+      .btn-del:hover {
+        color: #ff8888;
+        background: rgba(255, 80, 80, 0.1);
+      }
+      .divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 20px 0;
+        color: var(--muted);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      .divider::before, .divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: rgba(152, 176, 206, 0.14);
+      }
       .status {
         min-height: 20px;
         color: var(--accent-2);
         font-size: 0.9rem;
+        text-align: center;
       }
       .status.error { color: #ffb4a2; }
       .status.success { color: var(--success); }
-      .muted-link {
-        color: var(--accent-2);
-        text-decoration: none;
-        font-weight: 600;
-      }
     </style>
   </head>
   <body>
     <div class="auth-card">
       <div class="auth-header">
         <p class="eyebrow accent">Angel One access</p>
-        <h1>Choose an account</h1>
+        <h1>Mutual Fund Portfolio</h1>
+        <p class="subtle" style="margin: 6px 0 0;">Manage and view your mutual fund portfolios with live holdings analytics.</p>
+      </div>
+
+      <div id="sessionsSection" class="sessions-section">
+        <div class="section-title">Saved Accounts</div>
+        <div id="accountsList" class="accounts-list"></div>
+        <div class="divider">or connect new account</div>
       </div>
 
       <form id="loginForm" class="auth-form">
-        <div>
-          <label for="accountSelect">Saved account</label>
-          <select id="accountSelect" name="accountSelect">
-            <option value="">New Angel One login</option>
-          </select>
-        </div>
-
-        <div class="inline-row">
-          <button class="secondary" id="reuseBtn" type="button">Reuse selected</button>
-          <button class="primary" id="loginBtn" type="submit">Login with Angel One</button>
-        </div>
-
+        <button class="primary" id="loginBtn" type="submit" style="width: 100%; padding: 14px; font-size: 1rem; font-weight: 700;">
+          🚀 Log in to Angel One
+        </button>
         <div id="status" class="status" aria-live="polite"></div>
       </form>
     </div>
