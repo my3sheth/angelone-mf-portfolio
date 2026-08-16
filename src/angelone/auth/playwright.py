@@ -11,7 +11,7 @@ from angelone.session_store import save_account_session
 ROOT = Path(__file__).resolve().parents[3]
 
 ENV_FILE = ROOT / ".env"
-PROFILE_DIR = ROOT / "browser_profile"
+PROFILE_ROOT = ROOT / "browser_profile"
 
 LOGIN_URL = "https://www.angelone.in/login/"
 MF_URL = "https://www.angelone.in/mutual-funds/investments/"
@@ -20,6 +20,15 @@ MF_API_HOST = "nbu-mf-portfolio.angelone.in"
 
 
 class AngelOneAuthenticator:
+
+    @staticmethod
+    def _profile_dir_for(account_name="default"):
+        safe_name = (account_name or "default").strip() or "default"
+        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", safe_name).strip("_")
+        if not safe_name:
+            safe_name = "default"
+        PROFILE_ROOT.mkdir(parents=True, exist_ok=True)
+        return PROFILE_ROOT / safe_name
 
     def _infer_logged_in_name(self, page):
         try:
@@ -45,10 +54,12 @@ class AngelOneAuthenticator:
 
         captured = None
 
+        profile_dir = self._profile_dir_for(account_name)
+
         with sync_playwright() as p:
 
             context = p.chromium.launch_persistent_context(
-                str(PROFILE_DIR),
+                str(profile_dir),
                 headless=headless,
                 channel="chrome",
             )

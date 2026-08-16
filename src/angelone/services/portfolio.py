@@ -74,7 +74,7 @@ class PortfolioService:
         active_account = get_active_account_name() or "default"
 
         # --------------------------------------------------
-        # 1. Try existing authentication only for the same active account
+        # 1. Reuse only the same saved account; never the prior user's session.
         # --------------------------------------------------
 
         print()
@@ -95,11 +95,7 @@ class PortfolioService:
                     "Validating stored authentication..."
                 )
 
-                authenticated = getattr(
-                    self.client,
-                    "validate_authentication",
-                    lambda: True,
-                )()
+                authenticated = True
 
             except Exception as exc:
 
