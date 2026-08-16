@@ -1,6 +1,6 @@
 # AngelOne Mutual Funds Holdings
 
-A local, offline-first portfolio analytics and management dashboard for Angel One Mutual Funds.
+A local portfolio analytics and management dashboard for Angel One Mutual Funds.
 
 ## Features
 
@@ -10,7 +10,6 @@ A local, offline-first portfolio analytics and management dashboard for Angel On
 - **Portfolio Analytics**: Track total invested capital, current value, total gain / return %, monthly SIPs, and average TER.
 - **Holdings Table**: View all fund schemes with current NAV, units, investment amounts, and category insights.
 - **Report Exports**: Export clean, styled Excel spreadsheets (`.xlsx`) and printable PDF reports (`.pdf`).
-- **Timezone-Aware**: Automatically displays updated timestamps in your local browser timezone.
 
 ---
 
@@ -25,7 +24,7 @@ A local, offline-first portfolio analytics and management dashboard for Angel On
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/angelone-mf-portfolio.git
+git clone https://github.com/my3sheth/angelone-mf-portfolio.git
 cd angelone-mf-portfolio
 
 # Create and activate a virtual environment
