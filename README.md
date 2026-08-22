@@ -56,3 +56,10 @@ Open [http://localhost:8000](http://localhost:8000) in your browser:
 - **100% Local**: All authentication tokens, cookies, and portfolio data are stored locally on your machine in `angelone.sqlite3` and `portfolio_<user>.json`.
 - **No Third-Party Telemetry**: Your credentials and financial data never leave your local environment.
 - **Isolated Profiles**: Browser profiles and authentication sessions are kept isolated per account in `browser_profile/`.
+
+---
+
+## API Integration & Disclaimer
+
+This project integrates with AngelOne web APIs discovered through browser network analysis. Because these are internal web application APIs rather than officially supported developer APIs, endpoint contracts and authentication mechanisms may change over time. The project architecture isolates AngelOne-specific integrations behind dedicated API and service layers to minimize the impact of future changes.
+
