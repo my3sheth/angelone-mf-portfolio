@@ -210,10 +210,11 @@ def is_auth_valid(account_name):
     if expires_at:
         try:
             exp_time = datetime.fromisoformat(expires_at)
-            if exp_time < datetime.utcnow():
+            now = datetime.now(exp_time.tzinfo) if exp_time.tzinfo is not None else datetime.utcnow()
+            if exp_time < now:
                 mark_auth_expired(account_name)
                 return False, load_auth_details(account_name)
-        except ValueError:
+        except Exception:
             pass
 
     return True, auth_details
