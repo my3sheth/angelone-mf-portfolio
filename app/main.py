@@ -1,6 +1,11 @@
+from datetime import datetime
+from email.message import EmailMessage
 from io import BytesIO
 from pathlib import Path
+import os
+import smtplib
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -8,12 +13,34 @@ from openpyxl import Workbook
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from angelone.auth_store import list_all_auth_details, get_auth_status, clear_all_auth_details, is_auth_valid, mark_auth_expired
 from angelone.session_store import clear_all_sessions, set_active_account_name, get_active_account_name
 from angelone.services.portfolio import PortfolioService
 
+
+load_dotenv()
+
+PDF_FONT_NAME = "Nirmala"
+PDF_FONT_BOLD_NAME = "Nirmala-Bold"
+
+unicode_fonts = (
+    (PDF_FONT_NAME, r"C:\Windows\Fonts\segoeui.ttf"),
+    (PDF_FONT_BOLD_NAME, r"C:\Windows\Fonts\segoeuib.ttf"),
+)
+for font_name, font_path in unicode_fonts:
+    if os.path.exists(font_path):
+        pdfmetrics.registerFont(TTFont(font_name, font_path))
+
+nirmala_ttc = r"C:\Windows\Fonts\Nirmala.ttc"
+if PDF_FONT_NAME not in pdfmetrics.getRegisteredFontNames() and os.path.exists(nirmala_ttc):
+    try:
+        pdfmetrics.registerFont(TTFont(PDF_FONT_NAME, nirmala_ttc, subfontIndex=0))
+    except Exception:
+        pass
 
 app = FastAPI(
     title="Angel One MF Portfolio API",
@@ -192,17 +219,14 @@ def _portfolio_table(portfolio):
     return {"columns": columns, "rows": rows}
 
 
-def _excel_response(portfolio):
+def _build_excel_bytes(portfolio):
     table = _portfolio_table(portfolio)
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Portfolio"
-
     sheet.append([column["label"] for column in table["columns"]])
     for row in table["rows"]:
-        sheet.append([
-            row.get(column["key"]) for column in table["columns"]
-        ])
+        sheet.append([row.get(column["key"]) for column in table["columns"]])
 
     for column_cells in sheet.columns:
         max_length = 0
@@ -210,38 +234,28 @@ def _excel_response(portfolio):
         for cell in column_cells:
             if cell.value is not None:
                 max_length = max(max_length, len(str(cell.value)))
-        adjusted_width = max_length + 2
-        sheet.column_dimensions[column].width = adjusted_width
+        sheet.column_dimensions[column].width = max_length + 2
 
     buffer = BytesIO()
     workbook.save(buffer)
-    buffer.seek(0)
-    return StreamingResponse(
-        buffer,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": 'attachment; filename="portfolio.xlsx"',
-        },
-    )
+    return buffer.getvalue()
 
 
-def _pdf_response(portfolio):
+def _build_pdf_bytes(portfolio):
     table = _portfolio_table(portfolio)
     buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(letter),
-        leftMargin=18,
-        rightMargin=18,
-        topMargin=20,
-        bottomMargin=20,
-        title="Portfolio Report",
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), leftMargin=18,
+                            rightMargin=18, topMargin=20, bottomMargin=20,
+                            title="Portfolio Report")
     styles = getSampleStyleSheet()
-    story = [
-        Paragraph("Mutual Fund Portfolio", styles["Title"]),
-        Spacer(1, 12),
-    ]
+    if PDF_FONT_NAME in pdfmetrics.getRegisteredFontNames():
+        styles["Title"].fontName = PDF_FONT_NAME
+        pdf_table_font = PDF_FONT_NAME
+        pdf_table_bold_font = PDF_FONT_BOLD_NAME if PDF_FONT_BOLD_NAME in pdfmetrics.getRegisteredFontNames() else PDF_FONT_NAME
+    else:
+        pdf_table_font = "Helvetica"
+        pdf_table_bold_font = "Helvetica-Bold"
+    story = [Paragraph("Mutual Fund Portfolio", styles["Title"]), Spacer(1, 12)]
 
     data = [[column["label"] for column in table["columns"]]]
     for row in table["rows"]:
@@ -259,29 +273,21 @@ def _pdf_response(portfolio):
         data.append(row_cells)
 
     pdf_table = Table(data, repeatRows=1)
-    pdf_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f5aa6")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 7.5),
-            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-            ("TOPPADDING", (0, 0), (-1, 0), 6),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
-        ])
-    )
+    pdf_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f5aa6")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, -1), pdf_table_font),
+        ("FONTNAME", (0, 0), (-1, 0), pdf_table_bold_font),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
+    ]))
     story.append(pdf_table)
     doc.build(story)
-    buffer.seek(0)
-    return StreamingResponse(
-        buffer,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": 'attachment; filename="portfolio.pdf"',
-        },
-    )
+    return buffer.getvalue()
 
 
 @app.get("/health")
@@ -594,7 +600,15 @@ def get_portfolio_table(account_name: str | None = None, refresh: bool = False):
 def export_portfolio_excel(account_name: str | None = None):
     try:
         portfolio = _get_portfolio_payload(account_name)
-        return _excel_response(portfolio)
+        excel_bytes = _build_excel_bytes(portfolio)
+        excel_filename = _export_filename(portfolio, "xlsx")
+        return StreamingResponse(
+            BytesIO(excel_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{excel_filename}"',
+            },
+        )
 
     except Exception as exc:
         raise HTTPException(
@@ -607,7 +621,15 @@ def export_portfolio_excel(account_name: str | None = None):
 def export_portfolio_pdf(account_name: str | None = None):
     try:
         portfolio = _get_portfolio_payload(account_name)
-        return _pdf_response(portfolio)
+        pdf_bytes = _build_pdf_bytes(portfolio)
+        pdf_filename = f"portfolio_{datetime.now().strftime('%Y%m%d')}.pdf"
+        return StreamingResponse(
+            BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{pdf_filename}"',
+            },
+        )
 
     except Exception as exc:
         raise HTTPException(
@@ -616,9 +638,120 @@ def export_portfolio_pdf(account_name: str | None = None):
         )
 
 
+@app.post("/portfolio/export/email")
+async def email_portfolio_reports(request: Request):
+    try:
+        body = await request.json()
+        account_name = str(body.get("account_name") or "").strip() or None
+        account_names = body.get("account_names")
+        if not isinstance(account_names, list):
+            account_names = [account_name] if account_name else []
+        account_names = list(dict.fromkeys(
+            str(name).strip() for name in account_names if str(name).strip()
+        ))
+        to_value = str(body.get("to") or "").strip()
+        cc_value = str(body.get("cc") or "").strip()
+
+        if not to_value:
+            raise HTTPException(status_code=422, detail="The recipient email address is required.")
+
+        def parse_addresses(value):
+            if not value:
+                return []
+            return [item.strip() for item in value.replace(";", ",").split(",") if item.strip()]
+
+        to_addresses = parse_addresses(to_value)
+        cc_addresses = parse_addresses(cc_value)
+
+        if not account_names:
+            active_account = get_active_account_name()
+            account_names = [active_account] if active_account else []
+        if not account_names:
+            raise HTTPException(status_code=422, detail="At least one account is required.")
+
+        portfolios = []
+        for selected_account in account_names:
+            portfolios.append(_get_portfolio_payload(selected_account))
+
+        smtp_host = os.getenv("SMTP_HOST")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        smtp_user = os.getenv("SMTP_USER")
+        smtp_password = os.getenv("SMTP_PASSWORD")
+        smtp_from = os.getenv("SMTP_FROM") or smtp_user
+
+        if not smtp_host or not smtp_user or not smtp_password or not smtp_from:
+            raise HTTPException(
+                status_code=500,
+                detail="Email is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, and optionally SMTP_FROM.",
+            )
+
+        account_label = ", ".join(
+            str(portfolio.get("account_name") or selected_account)
+            for portfolio, selected_account in zip(portfolios, account_names)
+        )
+
+        message = EmailMessage()
+        message["Subject"] = f"AngelOne MF Portfolio - {datetime.now().strftime('%d %b, %Y')}"
+        message["From"] = smtp_from
+        message["To"] = ", ".join(to_addresses)
+        if cc_addresses:
+            message["Cc"] = ", ".join(cc_addresses)
+        message.set_content(
+            f"Please find the attached mutual fund portfolio reports for {account_label}.\n\n"
+            "This is an automated email."
+        )
+        message.add_alternative(
+            f"""<html>
+  <body style="font-family: Arial, sans-serif; color: #222222;">
+    <p>Please find the attached mutual fund portfolio reports for {account_label}.</p>
+    <p style="color: #777777; font-size: 13px; margin-top: 16px;">This is an automated email.</p>
+  </body>
+</html>""",
+            subtype="html",
+        )
+
+        for portfolio in portfolios:
+            excel_filename = _export_filename(portfolio, "xlsx")
+            pdf_filename = _export_filename(portfolio, "pdf")
+            message.add_attachment(
+                _build_excel_bytes(portfolio),
+                maintype="application",
+                subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                filename=excel_filename,
+            )
+            message.add_attachment(
+                _build_pdf_bytes(portfolio),
+                maintype="application",
+                subtype="pdf",
+                filename=pdf_filename,
+            )
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_user, smtp_password)
+            server.send_message(message, from_addr=smtp_from, to_addrs=to_addresses + cc_addresses)
+
+        return {"status": "success", "sent_to": to_addresses, "cc": cc_addresses}
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not send email: {exc}")
+
+
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
     favicon_path = Path(__file__).resolve().parent / "static" / "favicon.svg"
     if favicon_path.exists():
         return FileResponse(favicon_path, media_type="image/svg+xml")
     raise HTTPException(status_code=404, detail="Favicon not found")
+
+
+def _export_filename(portfolio, extension):
+    account_name = str(portfolio.get("account_name") or "Portfolio").strip()
+    first_name = account_name.split()[0] if account_name else "Portfolio"
+    safe_name = "".join(char for char in first_name if char.isalnum()) or "Portfolio"
+    date_suffix = datetime.now().strftime("%d%b%y")
+    return f"{safe_name}{date_suffix}.{extension}"

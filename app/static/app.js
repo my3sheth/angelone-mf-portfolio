@@ -8,6 +8,34 @@ const numberFormatter = new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 4,
 });
 
+let statusToastTimer;
+
+function showStatusToast(title, message, type = 'success') {
+  const toast = document.getElementById('statusToast');
+  const toastTitle = document.getElementById('statusToastTitle');
+  const toastMessage = document.getElementById('statusToastMessage');
+  const toastIcon = document.getElementById('statusToastIcon');
+  if (!toast || !toastTitle || !toastMessage || !toastIcon) return;
+
+  toast.classList.toggle('error', type === 'error');
+  toastTitle.textContent = title;
+  toastMessage.textContent = message;
+  toastIcon.textContent = type === 'error' ? '!' : '✓';
+  toast.hidden = false;
+
+  window.clearTimeout(statusToastTimer);
+  statusToastTimer = window.setTimeout(() => {
+    toast.hidden = true;
+  }, 5000);
+}
+
+const statusToastClose = document.getElementById('statusToastClose');
+if (statusToastClose) {
+  statusToastClose.addEventListener('click', () => {
+    document.getElementById('statusToast').hidden = true;
+  });
+}
+
 async function checkAuthStatus(accountName) {
   try {
     const response = await fetch(`/auth/status/${encodeURIComponent(accountName)}`);
@@ -344,6 +372,126 @@ function bindActions() {
     pdfBtn.addEventListener('click', () => {
       const accountName = state.accountName ? `?account_name=${encodeURIComponent(state.accountName)}` : '';
       window.open(`/portfolio/export/pdf${accountName}`, '_blank');
+    });
+  }
+
+  const emailBtn = document.getElementById('emailBtn');
+  const emailModal = document.getElementById('emailModal');
+  const emailForm = document.getElementById('emailForm');
+  const emailAccounts = document.getElementById('emailAccounts');
+  const emailTo = document.getElementById('emailTo');
+  const emailCc = document.getElementById('emailCc');
+  const sendEmailBtn = document.getElementById('sendEmailBtn');
+  const accountDropdown = document.getElementById('accountDropdown');
+  const accountDropdownToggle = document.getElementById('accountDropdownToggle');
+  const accountDropdownSummary = document.getElementById('accountDropdownSummary');
+
+  if (emailBtn && emailModal && emailForm && emailAccounts) {
+    const updateAccountSummary = () => {
+      const selectedNames = Array.from(emailAccounts.querySelectorAll('input[type="checkbox"]:checked'))
+        .map((checkbox) => checkbox.value);
+      accountDropdownSummary.textContent = selectedNames.length
+        ? selectedNames.join(', ')
+        : 'Select accounts';
+    };
+
+    accountDropdownToggle.addEventListener('click', () => {
+      const isOpen = accountDropdown.classList.toggle('open');
+      accountDropdownToggle.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    emailBtn.addEventListener('click', async () => {
+      emailAccounts.innerHTML = '<span class="account-dropdown-loading">Loading accounts...</span>';
+      accountDropdown.classList.remove('open');
+      accountDropdownToggle.setAttribute('aria-expanded', 'false');
+      accountDropdownSummary.textContent = 'Loading accounts...';
+      emailModal.hidden = false;
+      emailTo.focus();
+
+      try {
+        const sessionsResponse = await fetch('/auth/sessions');
+        if (!sessionsResponse.ok) throw new Error('Could not load accounts.');
+        const sessionsPayload = await sessionsResponse.json();
+        const availableNames = (sessionsPayload.sessions || [])
+          .map((session) => (session.account_name || '').trim())
+          .filter((name) => name);
+
+        if (!availableNames.length) {
+          emailAccounts.innerHTML = '<span class="account-dropdown-loading">No accounts available</span>';
+          accountDropdownSummary.textContent = 'No accounts available';
+          return;
+        }
+
+        emailAccounts.innerHTML = availableNames.map((name) => {
+          const checked = name === state.accountName ? 'checked' : '';
+          return `<label class="account-dropdown-option"><input type="checkbox" value="${name}" ${checked} /><span>${name}</span></label>`;
+        }).join('');
+        updateAccountSummary();
+
+        emailAccounts.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+          checkbox.addEventListener('change', updateAccountSummary);
+        });
+      } catch (error) {
+        emailAccounts.innerHTML = '<span class="account-dropdown-loading">Could not load accounts</span>';
+        accountDropdownSummary.textContent = 'Could not load accounts';
+        alert(`Account error: ${error.message}`);
+      }
+    });
+
+    emailModal.querySelectorAll('[data-close-email-modal]').forEach((element) => {
+      element.addEventListener('click', () => {
+        accountDropdown.classList.remove('open');
+        accountDropdownToggle.setAttribute('aria-expanded', 'false');
+        emailModal.hidden = true;
+      });
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !emailModal.hidden) {
+        accountDropdown.classList.remove('open');
+        accountDropdownToggle.setAttribute('aria-expanded', 'false');
+        emailModal.hidden = true;
+      }
+    });
+
+    emailForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const accountNames = Array.from(emailAccounts.querySelectorAll('input[type="checkbox"]:checked'))
+        .map((checkbox) => checkbox.value);
+
+      if (!accountNames.length) {
+        alert('Please select at least one account.');
+        return;
+      }
+
+      const originalText = sendEmailBtn.textContent;
+      sendEmailBtn.disabled = true;
+      sendEmailBtn.textContent = 'Sending...';
+
+      try {
+        const response = await fetch('/portfolio/export/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            account_name: state.accountName || null,
+            account_names: accountNames,
+            to: emailTo.value.trim(),
+            cc: emailCc.value.trim(),
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(extractErrorMessage(result, 'Could not send the email.'));
+        }
+        emailModal.hidden = true;
+        emailForm.reset();
+        showStatusToast('Reports sent successfully', 'The portfolio Excel and PDF reports were emailed.', 'success');
+      } catch (error) {
+        showStatusToast('Email could not be sent', error.message, 'error');
+      } finally {
+        sendEmailBtn.disabled = false;
+        sendEmailBtn.textContent = originalText;
+      }
     });
   }
 }

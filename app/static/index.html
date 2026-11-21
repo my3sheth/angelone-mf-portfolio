@@ -22,6 +22,7 @@
           <a href="/login" class="ghost" id="addAccountBtn" style="text-decoration: none; padding: 10px 14px; border-radius: 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 0.88rem;">+ Add Account</a>
           <button class="primary" id="excelBtn" type="button">Export Excel</button>
           <button class="ghost" id="pdfBtn" type="button">Export PDF</button>
+          <button class="secondary" id="emailBtn" type="button">Email Reports</button>
         </div>
       </header>
 
@@ -66,6 +67,58 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=6"></script>
+    <div class="email-modal" id="emailModal" role="dialog" aria-modal="true" aria-labelledby="emailModalTitle" hidden>
+      <div class="email-modal-backdrop" data-close-email-modal></div>
+      <form class="email-modal-card" id="emailForm">
+        <div class="email-modal-header">
+          <div>
+            <p class="eyebrow accent">portfolio delivery</p>
+            <h3 id="emailModalTitle">Email Reports</h3>
+          </div>
+          <button class="email-modal-close" type="button" data-close-email-modal aria-label="Close">×</button>
+        </div>
+
+        <div class="email-field">
+          <label for="emailTo">To <span>*</span></label>
+          <input id="emailTo" name="to" type="text" placeholder="recipient@example.com, another@example.com" autocomplete="email" required />
+        </div>
+
+        <div class="email-field">
+          <label for="emailCc">CC <small>Optional</small></label>
+          <input id="emailCc" name="cc" type="text" placeholder="cc@example.com" autocomplete="email" />
+        </div>
+
+        <div class="email-field">
+          <label id="emailAccountsLabel">Accounts <span>*</span></label>
+          <div class="account-dropdown" id="accountDropdown">
+            <button class="account-dropdown-toggle" id="accountDropdownToggle" type="button" aria-haspopup="listbox" aria-expanded="false">
+              <span id="accountDropdownSummary">Select accounts</span>
+              <span class="account-dropdown-chevron" aria-hidden="true">
+                <svg viewBox="0 0 20 20">
+                  <path d="M5.5 7.5 10 12l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            </button>
+            <div class="account-dropdown-menu" id="emailAccounts" role="group" aria-labelledby="emailAccountsLabel"></div>
+          </div>
+        </div>
+
+        <div class="email-modal-actions">
+          <button class="ghost" type="button" data-close-email-modal>Cancel</button>
+          <button class="primary" id="sendEmailBtn" type="submit">Send Reports</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="status-toast" id="statusToast" role="status" aria-live="polite" hidden>
+      <span class="status-toast-icon" id="statusToastIcon" aria-hidden="true">✓</span>
+      <div>
+        <strong id="statusToastTitle">Success</strong>
+        <p id="statusToastMessage"></p>
+      </div>
+      <button class="status-toast-close" id="statusToastClose" type="button" aria-label="Close notification">×</button>
+    </div>
+
+    <script src="/static/app.js?v=8"></script>
   </body>
 </html>
